@@ -1,0 +1,48 @@
+name: Deploy Static Website to Azure and Purge Front Door
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload to Blob Storage
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az storage blob upload-batch \
+              --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }} \
+              --auth-mode login \
+              --source . \
+              --destination '$web' \
+              --overwrite
+
+      - name: Purge Front Door Cache
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az afd endpoint purge \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --profile-name ${{ secrets.FRONT_DOOR_PROFILE_NAME }} \
+              --endpoint-name ${{ secrets.FRONT_DOOR_ENDPOINT_NAME }} \
+              --content-paths "/*"
+
+      - name: Logout from Azure
+        run: az logout
